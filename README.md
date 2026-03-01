@@ -93,6 +93,8 @@ git clone https://github.com/vllm-project/vllm.git vllm-source
 cd vllm-source
 git checkout v0.14.1
 git apply ..\vllm-windows.patch
+:: Note: The patch applies to v0.14.1 source. The pre-built wheel is versioned
+:: as v0.14.2+win.cu126 to distinguish it from upstream releases.
 ```
 
 After this step your directory should look like:
@@ -207,8 +209,8 @@ set VLLM_HOST_IP=127.0.0.1
 python vllm_launcher.py ^
     --model E:\models\Qwen2.5-1.5B-Instruct ^
     --port 8100 ^
-    --gpu-memory-utilization 0.6 ^
-    --max-num-seqs 64 ^
+    --gpu-memory-utilization 0.90 ^
+    --max-num-seqs 128 ^
     --enforce-eager
 ```
 
@@ -218,10 +220,10 @@ python vllm_launcher.py ^
 | `--models-dir` | (auto-scan) | Additional directory to scan for models |
 | `--port` | 8100 | Server port |
 | `--host` | 127.0.0.1 | Bind address |
-| `--gpu-memory-utilization` | 0.6 | Fraction of GPU VRAM to pre-allocate (0.1 - 1.0) |
+| `--gpu-memory-utilization` | 0.6 | Fraction of GPU VRAM to pre-allocate (0.1 - 1.0). Safe to use 0.90-0.92 on dedicated GPU servers (display driver reserves ~80 MB) |
 | `--max-model-len` | (auto) | Max sequence length |
-| `--max-num-seqs` | 64 | Max concurrent sequences in the KV cache |
-| `--enforce-eager` | off | Disable CUDA graphs (hurts throughput — only use for debugging) |
+| `--max-num-seqs` | 64 | Max concurrent sequences in the KV cache. 128 is viable at 0.90+ memory utilization |
+| `--enforce-eager` | off | **Required on Windows.** Disables CUDA graphs (needs Triton, which is Linux-only) |
 | `--tensor-parallel-size` | 1 | Number of GPUs (must be 1 on Windows) |
 | `--gpu-id` | (all) | GPU device index (e.g. `1` for second GPU) |
 | `--enable-prefix-caching` | off | Reuse KV cache for shared prefixes |
@@ -240,6 +242,42 @@ GET  /v1/models                 # List loaded models
 POST /v1/chat/completions       # OpenAI-compatible chat completions (with tool calling)
 POST /v1/embeddings             # Text embeddings (start with --task embed)
 ```
+
+### Multi-GPU: Running Two Instances
+
+On multi-GPU systems, you can run generation and embedding servers simultaneously — each pinned to a different GPU:
+
+**Terminal 1 — Text generation (GPU 0):**
+```batch
+set VLLM_ATTENTION_BACKEND=FLASH_ATTN
+set VLLM_HOST_IP=127.0.0.1
+
+python vllm_launcher.py ^
+    --model E:\models\xLAM-2-1b-fc-r ^
+    --port 8100 ^
+    --gpu-id 0 ^
+    --gpu-memory-utilization 0.92 ^
+    --max-num-seqs 128 ^
+    --enforce-eager
+```
+
+**Terminal 2 — Embeddings (GPU 1):**
+```batch
+set VLLM_ATTENTION_BACKEND=FLASH_ATTN
+set VLLM_HOST_IP=127.0.0.1
+
+python vllm_launcher.py ^
+    --model E:\models\nomic-embed-text-v1.5 ^
+    --task embed ^
+    --port 8101 ^
+    --gpu-id 1 ^
+    --trust-remote-code ^
+    --enforce-eager
+```
+
+Both servers run independently. Use `--gpu-id` (not `CUDA_VISIBLE_DEVICES`) to avoid environment variable conflicts between terminals.
+
+> **Note:** Embedding models must be in FP16 safetensors format — GGUF is not supported for BERT-based embedding models like nomic-embed.
 
 ### Calling the API
 
@@ -262,12 +300,13 @@ Works with any OpenAI-compatible client library (openai-python, LangChain, LiteL
 
 vLLM pre-allocates a large KV cache on startup using PagedAttention. This is by design — it's how vLLM achieves high concurrent throughput. The tradeoff is that even a small model uses significant VRAM:
 
-| Model Size | Weights | KV Cache (0.6 util) | Total VRAM | Card |
-|-----------|---------|-------------------|------------|------|
-| 1.5B Q8 | ~1.8 GB | ~12 GB | ~14 GB | 24 GB RTX 3090 |
-| 7B Q4 | ~4 GB | ~12 GB | ~16 GB | 24 GB RTX 3090 |
+| Model Size | Weights | KV Cache (0.6 util) | KV Cache (0.92 util) | Card |
+|-----------|---------|-------------------|---------------------|------|
+| 1.5B FP16 | ~3 GB | ~12 GB | ~19 GB | 24 GB RTX 3090 |
+| 1.5B Q8 | ~1.8 GB | ~12 GB | ~20 GB | 24 GB RTX 3090 |
+| 7B Q4 | ~4 GB | ~12 GB | ~18 GB | 24 GB RTX 3090 |
 
-Lower `--gpu-memory-utilization` if you hit OOM during sampler warmup. Lower `--max-num-seqs` to reduce KV cache size.
+On a dedicated inference machine (no desktop workload on the GPU), you can safely use `--gpu-memory-utilization 0.92` — the Windows display driver reserves ~80 MB regardless. Lower the value if you hit OOM during sampler warmup. Lower `--max-num-seqs` to reduce KV cache size.
 
 ---
 
@@ -324,10 +363,11 @@ Lower `--gpu-memory-utilization` if you hit OOM during sampler warmup. Lower `--
 set VLLM_ATTENTION_BACKEND=FLASH_ATTN
 set VLLM_HOST_IP=127.0.0.1
 
-:: Optional but recommended
-set CUDA_DEVICE_ORDER=PCI_BUS_ID
+:: Optional — pin to a specific GPU
 set CUDA_VISIBLE_DEVICES=0
 ```
+
+> **Warning:** Avoid setting `CUDA_DEVICE_ORDER=PCI_BUS_ID` on multi-GPU systems — it can reorder GPU indices and cause vLLM to target the wrong device. Use `--gpu-id` instead for reliable GPU selection.
 
 ---
 
@@ -343,6 +383,46 @@ set CUDA_VISIBLE_DEVICES=0
 | PyTorch | 2.9.1+cu126 |
 | RAM | 32 GB recommended (compilation is memory-heavy) |
 | Disk | ~20 GB for build artifacts |
+
+---
+
+## Performance Tips
+
+### Use FP16 Safetensors Instead of GGUF
+
+This is the single biggest performance optimization. vLLM's continuous batching and PagedAttention are designed for native tensor formats. GGUF works but bypasses these optimizations:
+
+| Format | Throughput (32 concurrent) | Speedup |
+|--------|---------------------------|---------|
+| GGUF Q8 | ~2.0 decisions/s | 1x (baseline) |
+| FP16 safetensors | ~11.9 decisions/s | **~6x faster** |
+
+Benchmarked with Salesforce xLAM-2-1B on RTX 3090, 64 concurrent requests, `--gpu-memory-utilization 0.92`.
+
+**How to get FP16 models:** Most HuggingFace model repos include both safetensors and GGUF. Download the safetensors version (the repo with `config.json`, `model.safetensors`, and `tokenizer.json` — not the GGUF quant repo).
+
+### Optimal Launch Command
+
+For maximum throughput on a dedicated RTX 3090:
+
+```batch
+set VLLM_ATTENTION_BACKEND=FLASH_ATTN
+set VLLM_HOST_IP=127.0.0.1
+set CUDA_VISIBLE_DEVICES=0
+
+python vllm_launcher.py ^
+    --model E:\models\your-model-fp16 ^
+    --port 8100 ^
+    --gpu-memory-utilization 0.92 ^
+    --max-num-seqs 128 ^
+    --max-model-len 4096 ^
+    --enable-prefix-caching ^
+    --enforce-eager
+```
+
+### Enable Prefix Caching
+
+`--enable-prefix-caching` reuses KV cache for shared prompt prefixes. If your application sends similar system prompts across requests (common for agents and chatbots), this significantly reduces redundant computation.
 
 ---
 
@@ -442,9 +522,15 @@ vllm-windows-build/
 
 ## Tested With
 
-- Qwen2.5-1.5B-Instruct Q8 GGUF — loaded via vLLM OpenAI-compatible API, 202.8 tok/s throughput
-- RTX 3090 24 GB, `gpu_memory_utilization=0.6`, `max_num_seqs=64`
-- Windows 10 Pro 10.0.19045, MSVC 19.43, CUDA 12.6, Python 3.10.6, PyTorch 2.9.1+cu126
+**Hardware:** RTX 3090 24 GB + RTX 3060 12 GB, Windows 10 Pro 10.0.19045, MSVC 19.43, CUDA 12.6, Python 3.10.6, PyTorch 2.9.1+cu126
+
+| Model | Format | Util | Seqs | Throughput | Notes |
+|-------|--------|------|------|-----------|-------|
+| Salesforce xLAM-2-1B-fc-r | FP16 safetensors | 0.92 | 128 | 11.91 dec/s, 16,350 tok/s | Best balanced (tool calling) |
+| Qwen2.5-1.5B-Instruct | GGUF Q8 | 0.6 | 64 | 202.8 tok/s | Baseline GGUF test |
+| nomic-embed-text-v1.5 | FP16 safetensors | 0.92 | — | Embedding server | RTX 3060, `--task embed` |
+
+10 models tested across 1B-8B range. Full benchmark results at [AI Character Engine](https://github.com/rookiemann/ai-player-engine).
 
 ---
 
