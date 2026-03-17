@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index ec67ee8..fb70464 100644
+index ec67ee8c3..fb70464fb 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -64,7 +64,7 @@ set(TORCH_SUPPORTED_VERSION_ROCM "2.9.1")
@@ -62,7 +62,7 @@ index ec67ee8..fb70464 100644
    WITH_SOABI)
  
 diff --git a/cmake/utils.cmake b/cmake/utils.cmake
-index bdb2ba7..75eca62 100644
+index bdb2ba74d..75eca62d1 100644
 --- a/cmake/utils.cmake
 +++ b/cmake/utils.cmake
 @@ -3,7 +3,7 @@
@@ -75,7 +75,7 @@ index bdb2ba7..75eca62 100644
    find_package(Python COMPONENTS Interpreter Development.Module Development.SABIModule)
    if (NOT Python_FOUND)
 diff --git a/csrc/attention/merge_attn_states.cu b/csrc/attention/merge_attn_states.cu
-index 27d1e99..f7ecc23 100644
+index 27d1e990c..f7ecc2305 100644
 --- a/csrc/attention/merge_attn_states.cu
 +++ b/csrc/attention/merge_attn_states.cu
 @@ -7,6 +7,10 @@
@@ -110,7 +110,7 @@ index 27d1e99..f7ecc23 100644
        // Pack 128b load
        pack_128b_t p_out_pack = reinterpret_cast<const pack_128b_t*>(
 diff --git a/csrc/core/math.hpp b/csrc/core/math.hpp
-index 6764e1f..c6345f7 100644
+index 6764e1fd6..c6345f72f 100644
 --- a/csrc/core/math.hpp
 +++ b/csrc/core/math.hpp
 @@ -5,7 +5,13 @@
@@ -129,7 +129,7 @@ index 6764e1f..c6345f7 100644
  
  template <typename A, typename B>
 diff --git a/csrc/cumem_allocator.cpp b/csrc/cumem_allocator.cpp
-index 6c2c18a..181e3f8 100644
+index 6c2c18a66..181e3f806 100644
 --- a/csrc/cumem_allocator.cpp
 +++ b/csrc/cumem_allocator.cpp
 @@ -1,6 +1,10 @@
@@ -144,7 +144,7 @@ index 6c2c18a..181e3f8 100644
  
  #include "cumem_allocator_compat.h"
 diff --git a/csrc/fused_qknorm_rope_kernel.cu b/csrc/fused_qknorm_rope_kernel.cu
-index a51e1a3..1314c98 100644
+index a51e1a347..1314c98ee 100644
 --- a/csrc/fused_qknorm_rope_kernel.cu
 +++ b/csrc/fused_qknorm_rope_kernel.cu
 @@ -18,6 +18,10 @@
@@ -159,7 +159,7 @@ index a51e1a3..1314c98 100644
  #include <c10/cuda/CUDAGuard.h>
  
 diff --git a/csrc/mamba/mamba_ssm/selective_scan_fwd.cu b/csrc/mamba/mamba_ssm/selective_scan_fwd.cu
-index fb2a2e5..9ca7565 100644
+index fb2a2e578..9ca7565f1 100644
 --- a/csrc/mamba/mamba_ssm/selective_scan_fwd.cu
 +++ b/csrc/mamba/mamba_ssm/selective_scan_fwd.cu
 @@ -366,35 +366,53 @@ void selective_scan_fwd_kernel(SSMParamsBase params) {
@@ -243,10 +243,25 @@ index fb2a2e5..9ca7565 100644
  
  template<typename input_t, typename weight_t, typename state_t>
 diff --git a/csrc/moe/marlin_moe_wna16/generate_kernels.py b/csrc/moe/marlin_moe_wna16/generate_kernels.py
-index 9db03ea..4d3809a 100644
+index 9db03ea14..33c94d036 100644
 --- a/csrc/moe/marlin_moe_wna16/generate_kernels.py
 +++ b/csrc/moe/marlin_moe_wna16/generate_kernels.py
-@@ -252,10 +252,9 @@ def generate_new_kernels():
+@@ -155,10 +155,12 @@ QUANT_CONFIGS = [
+ 
+ def remove_old_kernels():
+     for filename in glob.glob(os.path.dirname(__file__) + "/*kernel_*.cu"):
+-        subprocess.call(["rm", "-f", filename])
++        if os.path.exists(filename):
++            os.remove(filename)
+ 
+     filename = os.path.dirname(__file__) + "/kernel_selector.h"
+-    subprocess.call(["rm", "-f", filename])
++    if os.path.exists(filename):
++        os.remove(filename)
+ 
+ 
+ def generate_new_kernels():
+@@ -252,10 +254,9 @@ def generate_new_kernels():
                  ]
                  conditions = " && ".join(conditions)
  
@@ -260,7 +275,7 @@ index 9db03ea..4d3809a 100644
  
                  kernel_template2 = (
                      "Marlin<{{a_type_id}}, {{b_type_id}}, {{c_type_id}}, "
-@@ -292,7 +291,7 @@ def generate_new_kernels():
+@@ -292,7 +293,7 @@ def generate_new_kernels():
  
      if not SUPPORT_FP8 and kernel_selector_str != FILE_HEAD_COMMENT:
          kernel_selector_str += (
@@ -270,7 +285,7 @@ index 9db03ea..4d3809a 100644
              '"marlin kernel with fp8 activation is not built.");'
          )
 diff --git a/csrc/quantization/activation_kernels.cu b/csrc/quantization/activation_kernels.cu
-index 0c3bcf3..df9f610 100644
+index 0c3bcf3b6..df9f6105d 100644
 --- a/csrc/quantization/activation_kernels.cu
 +++ b/csrc/quantization/activation_kernels.cu
 @@ -216,9 +216,9 @@ constexpr __nv_bfloat16 get_fp8_max() {
@@ -395,7 +410,7 @@ index 0c3bcf3..df9f610 100644
        // Compute
        __nv_bfloat162 res[2];
 diff --git a/csrc/quantization/awq/gemm_kernels.cu b/csrc/quantization/awq/gemm_kernels.cu
-index 53c4767..06fdb42 100644
+index 53c47679c..06fdb4297 100644
 --- a/csrc/quantization/awq/gemm_kernels.cu
 +++ b/csrc/quantization/awq/gemm_kernels.cu
 @@ -176,7 +176,7 @@ __global__ void __launch_bounds__(64)
@@ -489,7 +504,7 @@ index 53c4767..06fdb42 100644
                "{%0, %1, %2, %3}, {%4, %5, %6, %7}, {%8, %9}, {%10, %11, %12, "
                "%13};\n"
 diff --git a/csrc/quantization/fused_kernels/layernorm_utils.cuh b/csrc/quantization/fused_kernels/layernorm_utils.cuh
-index cb7adc3..c59969b 100644
+index cb7adc312..c59969b5a 100644
 --- a/csrc/quantization/fused_kernels/layernorm_utils.cuh
 +++ b/csrc/quantization/fused_kernels/layernorm_utils.cuh
 @@ -76,7 +76,7 @@ __device__ void compute_dynamic_per_token_scales(
@@ -511,7 +526,7 @@ index cb7adc3..c59969b 100644
    const int VEC_SIZE = 4;
    float block_absmax_val_maybe = 0.0f;
 diff --git a/csrc/quantization/fused_kernels/quant_conversions.cuh b/csrc/quantization/fused_kernels/quant_conversions.cuh
-index 2b1eb1d..f8b8ad5 100644
+index 2b1eb1d56..f8b8ad5cf 100644
 --- a/csrc/quantization/fused_kernels/quant_conversions.cuh
 +++ b/csrc/quantization/fused_kernels/quant_conversions.cuh
 @@ -40,7 +40,7 @@ static __device__ __forceinline__ int8_t float_to_int8_rn(float const x) {
@@ -524,7 +539,7 @@ index 2b1eb1d..f8b8ad5 100644
  }
  
 diff --git a/csrc/quantization/gptq_allspark/allspark_qgemm_w8a16.cu b/csrc/quantization/gptq_allspark/allspark_qgemm_w8a16.cu
-index e306ff0..49e407a 100644
+index e306ff026..49e407a3c 100644
 --- a/csrc/quantization/gptq_allspark/allspark_qgemm_w8a16.cu
 +++ b/csrc/quantization/gptq_allspark/allspark_qgemm_w8a16.cu
 @@ -210,7 +210,7 @@ struct ComputeTile_W8A16_PerC_MtilexNtilex32_multistage_SM8x_SplitK {
@@ -537,10 +552,25 @@ index e306ff0..49e407a 100644
  
    __device__ ComputeTile_W8A16_PerC_MtilexNtilex32_multistage_SM8x_SplitK(
 diff --git a/csrc/quantization/gptq_marlin/generate_kernels.py b/csrc/quantization/gptq_marlin/generate_kernels.py
-index 24866fc..9e1258d 100644
+index 24866fc5c..8ecf0a0eb 100644
 --- a/csrc/quantization/gptq_marlin/generate_kernels.py
 +++ b/csrc/quantization/gptq_marlin/generate_kernels.py
-@@ -262,10 +262,9 @@ def generate_new_kernels():
+@@ -164,10 +164,12 @@ QUANT_CONFIGS = [
+ 
+ def remove_old_kernels():
+     for filename in glob.glob(os.path.dirname(__file__) + "/*kernel_*.cu"):
+-        subprocess.call(["rm", "-f", filename])
++        if os.path.exists(filename):
++            os.remove(filename)
+ 
+     filename = os.path.dirname(__file__) + "/kernel_selector.h"
+-    subprocess.call(["rm", "-f", filename])
++    if os.path.exists(filename):
++        os.remove(filename)
+ 
+ 
+ def generate_new_kernels():
+@@ -262,10 +264,9 @@ def generate_new_kernels():
                  ]
                  conditions = " && ".join(conditions)
  
@@ -554,7 +584,7 @@ index 24866fc..9e1258d 100644
  
                  kernel_template2 = (
                      "Marlin<{{a_type_id}}, {{b_type_id}}, {{c_type_id}}, "
-@@ -302,7 +301,7 @@ def generate_new_kernels():
+@@ -302,7 +303,7 @@ def generate_new_kernels():
  
      if not SUPPORT_FP8 and kernel_selector_str != FILE_HEAD_COMMENT:
          kernel_selector_str += (
@@ -564,7 +594,7 @@ index 24866fc..9e1258d 100644
              '"marlin kernel with fp8 activation is not built.");'
          )
 diff --git a/csrc/quantization/marlin/sparse/common/base.h b/csrc/quantization/marlin/sparse/common/base.h
-index 16018d3..7e45df3 100644
+index 16018d331..7e45df349 100644
 --- a/csrc/quantization/marlin/sparse/common/base.h
 +++ b/csrc/quantization/marlin/sparse/common/base.h
 @@ -17,6 +17,10 @@
@@ -579,7 +609,7 @@ index 16018d3..7e45df3 100644
  
  constexpr int ceildiv(int a, int b) { return (a + b - 1) / b; }
 diff --git a/csrc/quantization/utils.cuh b/csrc/quantization/utils.cuh
-index 73055a1..3cf01f6 100644
+index 73055a152..3cf01f62d 100644
 --- a/csrc/quantization/utils.cuh
 +++ b/csrc/quantization/utils.cuh
 @@ -37,9 +37,12 @@ struct quant_type_max<c10::Float8_e4m3fnuz> {
@@ -607,7 +637,7 @@ index 73055a1..3cf01f6 100644
  };
  
 diff --git a/csrc/quantization/w8a8/fp8/common.cu b/csrc/quantization/w8a8/fp8/common.cu
-index d07cdd5..b3164bc 100644
+index d07cdd571..b3164bcfe 100644
 --- a/csrc/quantization/w8a8/fp8/common.cu
 +++ b/csrc/quantization/w8a8/fp8/common.cu
 @@ -112,7 +112,7 @@ __global__ void segmented_max_reduction_strided(
@@ -629,7 +659,7 @@ index d07cdd5..b3164bc 100644
      scale[token_idx] = token_scale;
    }
 diff --git a/csrc/quantization/w8a8/fp8/common.cuh b/csrc/quantization/w8a8/fp8/common.cuh
-index 7838f21..5fe2223 100644
+index 7838f211c..5fe222300 100644
 --- a/csrc/quantization/w8a8/fp8/common.cuh
 +++ b/csrc/quantization/w8a8/fp8/common.cuh
 @@ -48,7 +48,7 @@ __device__ __forceinline__ fp8_type scaled_fp8_conversion(float const val,
@@ -642,7 +672,7 @@ index 7838f21..5fe2223 100644
    // Use hardware cvt instruction for fp8 on nvidia
    // Currently only support fp8_type = c10::Float8_e4m3fn
 diff --git a/requirements/cuda.txt b/requirements/cuda.txt
-index 1417fb9..c53bedd 100644
+index 1417fb991..c53bedd1b 100644
 --- a/requirements/cuda.txt
 +++ b/requirements/cuda.txt
 @@ -9,5 +9,5 @@ torch==2.9.1
@@ -654,7 +684,7 @@ index 1417fb9..c53bedd 100644
 +# FlashInfer removed for Windows build (nvidia-cutlass-dsl-libs-base not available)
 +# flashinfer-python==0.5.3
 diff --git a/setup.py b/setup.py
-index 8c952e0..9b79c46 100644
+index 8c952e01a..9b79c463a 100644
 --- a/setup.py
 +++ b/setup.py
 @@ -45,13 +45,22 @@ if sys.platform.startswith("darwin") and VLLM_TARGET_DEVICE != "cpu":
@@ -727,7 +757,7 @@ index 8c952e0..9b79c46 100644
              cmake_args += [f"-DROCM_PATH={ROCM_HOME}"]
  
 diff --git a/vllm/distributed/parallel_state.py b/vllm/distributed/parallel_state.py
-index c0f3304..9ec0e83 100644
+index c0f330408..9ec0e83e7 100644
 --- a/vllm/distributed/parallel_state.py
 +++ b/vllm/distributed/parallel_state.py
 @@ -25,7 +25,10 @@ If you only need to use the distributed environment without model/pipeline
@@ -823,7 +853,7 @@ index c0f3304..9ec0e83 100644
      # local_rank is not available in torch ProcessGroup,
      # see https://github.com/pytorch/pytorch/issues/122816
 diff --git a/vllm/entrypoints/openai/api_server.py b/vllm/entrypoints/openai/api_server.py
-index de7f6e5..edd15aa 100644
+index de7f6e5da..edd15aacb 100644
 --- a/vllm/entrypoints/openai/api_server.py
 +++ b/vllm/entrypoints/openai/api_server.py
 @@ -1235,7 +1235,8 @@ def create_server_socket(addr: tuple[str, int]) -> socket.socket:
@@ -837,7 +867,7 @@ index de7f6e5..edd15aa 100644
  
      return sock
 diff --git a/vllm/model_executor/layers/fused_moe/routed_experts_capturer.py b/vllm/model_executor/layers/fused_moe/routed_experts_capturer.py
-index 0fd788e..370eacd 100644
+index 0fd788ea5..370eacda8 100644
 --- a/vllm/model_executor/layers/fused_moe/routed_experts_capturer.py
 +++ b/vllm/model_executor/layers/fused_moe/routed_experts_capturer.py
 @@ -5,12 +5,15 @@
@@ -886,7 +916,7 @@ index 0fd788e..370eacd 100644
  
  def _create_or_attach_shared_memory(
 diff --git a/vllm/utils/network_utils.py b/vllm/utils/network_utils.py
-index 7d01533..c4f61f4 100644
+index 7d01533cb..c4f61f465 100644
 --- a/vllm/utils/network_utils.py
 +++ b/vllm/utils/network_utils.py
 @@ -139,6 +139,10 @@ def get_tcp_uri(ip: str, port: int) -> str:
@@ -901,7 +931,7 @@ index 7d01533..c4f61f4 100644
      return f"ipc://{base_rpc_path}/{uuid4()}"
  
 diff --git a/vllm/utils/system_utils.py b/vllm/utils/system_utils.py
-index aa14b39..86c65fb 100644
+index aa14b3951..86c65fb5f 100644
 --- a/vllm/utils/system_utils.py
 +++ b/vllm/utils/system_utils.py
 @@ -153,6 +153,8 @@ def get_mp_context():
@@ -914,7 +944,7 @@ index aa14b39..86c65fb 100644
  
  
 diff --git a/vllm/v1/engine/core_client.py b/vllm/v1/engine/core_client.py
-index 905d8df..76dbb3c 100644
+index 905d8df4d..76dbb3cc7 100644
 --- a/vllm/v1/engine/core_client.py
 +++ b/vllm/v1/engine/core_client.py
 @@ -91,6 +91,10 @@ class EngineCoreClient(ABC):
