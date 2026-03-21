@@ -32,7 +32,7 @@ vLLM is the most popular open-source LLM serving engine, but it officially only 
 
 ### 1. Install
 
-Download the wheel from [Releases](https://github.com/rookiemann/vllm-windows-build/releases/tag/v0.17.1-win), then:
+Download **[vllm-0.17.1+cu126-cp310-cp310-win_amd64.whl](https://github.com/rookiemann/vllm-windows-build/releases/tag/v0.17.1-win)** from the Releases page, then:
 
 ```batch
 :: Create a Python 3.10 virtual environment
