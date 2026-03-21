@@ -2,132 +2,146 @@
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue)
-![vLLM: v0.14.2](https://img.shields.io/badge/vLLM-v0.14.2-orange)
+![vLLM: v0.17.1](https://img.shields.io/badge/vLLM-v0.17.1-orange)
 ![CUDA: 12.6](https://img.shields.io/badge/CUDA-12.6-76B900)
 ![Python: 3.10](https://img.shields.io/badge/Python-3.10-3776AB)
+![Triton: 3.6](https://img.shields.io/badge/Triton-3.6-red)
 
-**Native Windows build of vLLM — no WSL, no Docker, no Linux VM.** 26 patched files, 370/370 CUDA kernels compiled, tested and running on MSVC 2022 + CUDA 12.6.
+**Native Windows build of vLLM — no WSL, no Docker, no Linux VM.** Now with **Triton support** and **Qwen 3.5** (Gated Delta Networks).
 
-vLLM is the most popular open-source LLM serving engine, but it officially only supports Linux. This repo provides both a **pre-built binary** (just download and run) and a complete patchset for compiling vLLM v0.14.2 natively on Windows with full CUDA acceleration.
+vLLM is the most popular open-source LLM serving engine, but it officially only supports Linux. This repo provides both a **pre-built wheel** (just download and install) and a complete patchset for compiling vLLM natively on Windows with full CUDA acceleration.
+
+## Releases
+
+| Release | vLLM | PyTorch | Triton | Models | Download |
+|---------|------|---------|--------|--------|----------|
+| **v0.17.1-win (NEW)** | 0.17.1 | 2.10.0+cu126 | 3.6.0 | Qwen 3.5, Qwen 3, Llama 4, all v0.14 models | [Download](https://github.com/rookiemann/vllm-windows-build/releases/tag/v0.17.1-win) |
+| v0.14.2-win | 0.14.2 | 2.9.1+cu126 | N/A | Qwen 2.5, Llama 3.x, Phi-4, xLAM | [Download](https://github.com/rookiemann/vllm-windows-build/releases/tag/v0.14.2-win) |
+
+### What's new in v0.17.1
+
+- **Triton on Windows** — first native Windows build with Triton kernel support via [triton-windows](https://github.com/triton-lang/triton-windows)
+- **Qwen 3.5 support** — Gated Delta Network (GDN) linear attention layers run via Triton kernels
+- **FlashAttention 2 + 4** — FA2 compiled, FA4 CuteDSL support
+- **PyTorch 2.10.0** — latest stable with CUDA 12.6
+- **253 CUDA kernels compiled** — all passing on MSVC 2022
 
 ---
 
-## Quick Start — Pre-built Binary (Recommended)
+## Quick Start — Pre-built Wheel (v0.17.1)
 
-No compiling needed. Downloads Python, PyTorch, and all dependencies automatically.
+### 1. Install
 
-### 1. Download and extract
-
-Download **[vllm-0.14.2-win.zip](https://github.com/rookiemann/vllm-windows-build/releases/tag/v0.14.2-win)** from the Releases page and extract it anywhere.
-
-### 2. Launch
-
-Double-click **`launch.bat`** — or from a terminal:
+Download the wheel from [Releases](https://github.com/rookiemann/vllm-windows-build/releases/tag/v0.17.1-win), then:
 
 ```batch
-launch.bat
+:: Create a Python 3.10 virtual environment
+py -3.10 -m venv venv
+venv\Scripts\activate
+
+:: Install PyTorch 2.10.0 with CUDA 12.6
+pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu126
+
+:: Install Triton for Windows
+pip install triton-windows
+
+:: Install the pre-built vLLM wheel
+pip install vllm-0.17.1+cu126-cp310-cp310-win_amd64.whl
+
+:: Install optional structured output deps
+pip install "llguidance>=1.3.0,<1.4.0" "xgrammar==0.1.29"
 ```
 
-On first run, `install.bat` will automatically:
-- Download Python 3.10.11 embedded (~15 MB)
-- Install pip
-- Install PyTorch 2.9.1+cu126 (~2.5 GB)
-- Install the pre-built vLLM wheel + all dependencies
+### 2. Run
 
-This takes 5-10 minutes on a fast connection. Subsequent launches skip straight to the server.
+```python
+import os
+os.environ['VLLM_HOST_IP'] = '127.0.0.1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-### 3. Select a model
+from vllm import LLM, SamplingParams
 
-If you run without `--model`, an interactive selector scans your system for HuggingFace models and GGUF files:
+llm = LLM(
+    model='E:\\models\\Qwen3.5-4B',
+    max_model_len=4096,
+    gpu_memory_utilization=0.90,
+    enforce_eager=True,
+    trust_remote_code=True,
+)
 
-```
-  vLLM Windows - Model Selection
-  ============================================================
-
-  Found 3 model(s):
-
-    #  Model                                     Type        Size  Path
-  ---  ----                                      ----        ----  ----
-  [ 1] Qwen2.5-1.5B-Instruct                    qwen2     3.1 GB  E:\models\...
-  [ 2] Llama-3.2-3B-Instruct                     llama     6.4 GB  E:\models\...
-  [ 3] phi-4-mini-instruct                       phi3      7.8 GB  E:\models\...
-
-  [ 0] Enter path manually
-
-  Select model number:
+params = SamplingParams(max_tokens=256, temperature=0.7)
+output = llm.generate(['Hello!'], sampling_params=params)
+print(output[0].outputs[0].text)
 ```
 
-Or pass the model directly:
-
-```batch
-launch.bat --model E:\models\Qwen2.5-1.5B-Instruct --port 8100
-```
-
-### 4. Test it
+### 3. Test it
 
 ```batch
 curl http://127.0.0.1:8100/health
 :: Returns: {"status":"ok"}
 
 curl http://127.0.0.1:8100/v1/models
-:: Returns: {"object":"list","data":[{"id":"Qwen2.5-1.5B-Instruct",...}]}
+:: Returns: {"object":"list","data":[{"id":"Qwen3.5-4B",...}]}
 ```
+
+> **Note:** First inference after loading is slow (1-2 min) because Triton JIT-compiles the GDN kernels. Subsequent requests use cached kernels and are fast.
 
 ---
 
-## Quick Start — Build from Source
+## Quick Start — v0.14.2 One-Click Installer (Legacy)
+
+For the older v0.14.2 release with the one-click `launch.bat` installer, see the [v0.14.2-win release](https://github.com/rookiemann/vllm-windows-build/releases/tag/v0.14.2-win).
+
+---
+
+## Build from Source (v0.17.1)
 
 For developers who want to compile vLLM themselves (30-45 min build time).
 
-### Step 1: Clone this repo
+### Step 1: Clone this repo and vLLM source
 
 ```batch
 git clone https://github.com/rookiemann/vllm-windows-build.git
-```
-
-### Step 2: Clone vLLM source and apply the patch
-
-```batch
 cd vllm-windows-build
-git clone https://github.com/vllm-project/vllm.git vllm-source
+git clone --depth 1 --branch v0.17.1 https://github.com/vllm-project/vllm.git vllm-source
 cd vllm-source
-git checkout v0.14.1
-git apply ..\vllm-windows.patch
-:: Note: The patch applies to v0.14.1 source. The pre-built wheel is versioned
-:: as v0.14.2+win.cu126 to distinguish it from upstream releases.
+git apply ..\vllm-windows-v2.patch
 ```
 
-After this step your directory should look like:
-
-```
-vllm-windows-build/
-├── vllm-source/          <-- patched vLLM source (you just created this)
-│   ├── csrc/
-│   ├── vllm/
-│   ├── setup.py
-│   └── ...
-├── vllm-windows.patch
-├── vllm_launcher.py
-├── build.bat
-└── ...
-```
-
-### Step 3: Create a Python environment with PyTorch
+### Step 2: Create a Python environment
 
 ```batch
-python -m venv venv
+py -3.10 -m venv venv
 venv\Scripts\activate
 
-:: Install PyTorch with CUDA 12.6 support
-pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/cu126
+:: Install PyTorch 2.10.0 with CUDA 12.6
+pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu126
 
-:: Install other build dependencies
-pip install wheel setuptools cmake ninja packaging
+:: Install Triton for Windows and build dependencies
+pip install triton-windows wheel "setuptools>=77.0.3,<81.0.0" setuptools-scm cmake ninja packaging numpy
+```
+
+### Step 3: Patch PyTorch header (required for PyTorch 2.10 + MSVC)
+
+Windows SDK defines `small` as `char` in `rpcndr.h`, which breaks a PyTorch CUDA header:
+
+```batch
+:: Add #undef small to the top of this file (after #pragma once):
+:: venv\Lib\site-packages\torch\include\c10\cuda\CUDACachingAllocator.h
+```
+
+Add this block after `#pragma once`:
+```cpp
+#ifdef _MSC_VER
+#ifdef small
+#undef small
+#endif
+#endif
 ```
 
 ### Step 4: Build vLLM
 
-Open a **Visual Studio Developer Command Prompt** (or run `vcvars64.bat` first so `cl.exe` and `nvcc.exe` are on PATH), then activate your venv and build:
+Open a **Visual Studio Developer Command Prompt** (or run `vcvars64.bat`), then:
 
 ```batch
 venv\Scripts\activate
@@ -136,55 +150,26 @@ set CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6
 set TORCH_CUDA_ARCH_LIST=8.6
 set VLLM_TARGET_DEVICE=cuda
 set MAX_JOBS=8
+set SETUPTOOLS_SCM_PRETEND_VERSION=0.17.1
 
 cd vllm-source
-pip install -e . --no-build-isolation -v
+pip install . --no-build-isolation -v
 ```
 
-Or use the included build script (still needs the Developer Command Prompt and venv active):
+Change `TORCH_CUDA_ARCH_LIST` to match your GPU (see table below). Compiles 253 CUDA/C++ files — expect 30-45 minutes with `MAX_JOBS=8`.
 
-```batch
-venv\Scripts\activate
-set CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6
-build.bat
-```
+### Step 5: Run
 
-This compiles 370 CUDA/C++ files. Expect 30-45 minutes on a modern system with `MAX_JOBS=8`.
+```python
+import os
+os.environ['VLLM_HOST_IP'] = '127.0.0.1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-### Step 5: Post-build — copy flash-attn wrappers
-
-The build downloads flash-attn source into `vllm-source/.deps/` and compiles the `.pyd` files, but doesn't copy the Python interface code. `build.bat` handles this automatically, but if you built manually:
-
-```batch
-cd vllm-source
-xcopy /E /Y ".deps\vllm-flash-attn-src\vllm_flash_attn\*.py" "vllm\vllm_flash_attn\"
-xcopy /E /Y ".deps\vllm-flash-attn-src\vllm_flash_attn\layers\*" "vllm\vllm_flash_attn\layers\"
-xcopy /E /Y ".deps\vllm-flash-attn-src\vllm_flash_attn\ops\*" "vllm\vllm_flash_attn\ops\"
-```
-
-### Step 6: Run
-
-```batch
-set VLLM_ATTENTION_BACKEND=FLASH_ATTN
-set VLLM_HOST_IP=127.0.0.1
-
-cd ..
-:: Replace with your own model path (HuggingFace format, not GGUF)
-python vllm_launcher.py --model E:\models\Qwen2.5-1.5B-Instruct --port 8100 --enforce-eager
-```
-
-You'll see vLLM load the model (takes 30-60 seconds), then:
-
-```
-INFO:     Started server process
-INFO:     Uvicorn running on http://127.0.0.1:8100
-```
-
-Test it:
-
-```batch
-curl http://127.0.0.1:8100/health
-:: Returns: {"status":"ok"}
+from vllm import LLM, SamplingParams
+llm = LLM(model='E:\\models\\Qwen3.5-4B', max_model_len=4096,
+           gpu_memory_utilization=0.90, enforce_eager=True, trust_remote_code=True)
+output = llm.generate(['Hello!'], sampling_params=SamplingParams(max_tokens=100))
+print(output[0].outputs[0].text)
 ```
 
 ---
@@ -359,30 +344,33 @@ On a dedicated inference machine (no desktop workload on the GPU), you can safel
 ## Required Environment Variables
 
 ```batch
-:: Must be set for every vLLM run on Windows
-set VLLM_ATTENTION_BACKEND=FLASH_ATTN
+:: v0.17.1 — only VLLM_HOST_IP is required
 set VLLM_HOST_IP=127.0.0.1
 
 :: Optional — pin to a specific GPU
 set CUDA_VISIBLE_DEVICES=0
+
+:: v0.14.2 also requires:
+:: set VLLM_ATTENTION_BACKEND=FLASH_ATTN
 ```
 
-> **Warning:** Avoid setting `CUDA_DEVICE_ORDER=PCI_BUS_ID` on multi-GPU systems — it can reorder GPU indices and cause vLLM to target the wrong device. Use `--gpu-id` instead for reliable GPU selection.
+> **Warning:** Avoid setting `CUDA_DEVICE_ORDER=PCI_BUS_ID` on multi-GPU systems — it can reorder GPU indices and cause vLLM to target the wrong device. Use `--gpu-id` or `CUDA_VISIBLE_DEVICES` instead.
 
 ---
 
 ## System Requirements
 
-| Component | Requirement |
-|-----------|------------|
-| OS | Windows 10 or 11 (64-bit) |
-| GPU | NVIDIA with CUDA Compute Capability 7.0+ (Volta or newer) |
-| CUDA Toolkit | 12.6 (tested; 12.x should work) |
-| Compiler | Visual Studio 2022 with C++ Desktop workload |
-| Python | 3.10.x (tested with 3.10.6) |
-| PyTorch | 2.9.1+cu126 |
-| RAM | 32 GB recommended (compilation is memory-heavy) |
-| Disk | ~20 GB for build artifacts |
+| Component | v0.17.1 | v0.14.2 |
+|-----------|---------|---------|
+| OS | Windows 10 or 11 (64-bit) | Same |
+| GPU | NVIDIA with Compute Capability 7.5+ | 7.0+ |
+| CUDA Toolkit | 12.6 | 12.6 |
+| Compiler | Visual Studio 2022 with C++ Desktop workload | Same |
+| Python | 3.10.x | 3.10.x |
+| PyTorch | 2.10.0+cu126 | 2.9.1+cu126 |
+| Triton | 3.6.0 (triton-windows) | N/A |
+| RAM | 32 GB recommended | Same |
+| Disk | ~20 GB for build artifacts | Same |
 
 ---
 
@@ -428,10 +416,11 @@ python vllm_launcher.py ^
 
 ## Known Limitations
 
-- **No Triton on Windows** — only `FLASH_ATTN` attention backend works. `TRITON_ATTN` and `FLEX_ATTENTION` both require Triton which has no Windows support.
 - **Single GPU only** — no NCCL on Windows means no multi-GPU tensor parallelism. `world_size` must be 1.
-- **No FlashInfer** — `flashinfer-python` doesn't publish Windows wheels. Commented out in requirements.
-- **VRAM pre-allocation** — vLLM's PagedAttention aggressively pre-allocates KV cache. A 1.5B model can use 14+ GB at `gpu_memory_utilization=0.6`. Lower the value or set `max_num_seqs` if you hit OOM.
+- **No FlashInfer** — `flashinfer-python` doesn't publish Windows wheels.
+- **No FA3 (Hopper)** — FlashAttention 3 has MSVC-incompatible nested macros. FA2 works for all SM < 90 GPUs. FA3 is only needed for H100/H200.
+- **Triton JIT cold start** — First inference after loading a model with GDN layers (Qwen 3.5) takes 1-2 minutes while Triton compiles kernels. Cached after first run.
+- **VRAM pre-allocation** — vLLM's PagedAttention aggressively pre-allocates KV cache. Lower `gpu_memory_utilization` or `max_num_seqs` if you hit OOM.
 
 ---
 
@@ -522,7 +511,15 @@ vllm-windows-build/
 
 ## Tested With
 
-**Hardware:** RTX 3090 24 GB + RTX 3060 12 GB, Windows 10 Pro 10.0.19045, MSVC 19.43, CUDA 12.6, Python 3.10.6, PyTorch 2.9.1+cu126
+**Hardware:** RTX 3090 24 GB + RTX 3060 12 GB, Windows 10 Pro 10.0.19045, MSVC 19.43, CUDA 12.6
+
+### v0.17.1 (PyTorch 2.10.0+cu126, Triton 3.6.0)
+
+| Model | Format | Util | KV Cache | Max Concurrency | Notes |
+|-------|--------|------|----------|----------------|-------|
+| Qwen3.5-4B (huihui) | BF16 safetensors | 0.90 | 91,872 tokens | 63x @ 4096 ctx | GDN Triton kernels working |
+
+### v0.14.2 (PyTorch 2.9.1+cu126)
 
 | Model | Format | Util | Seqs | Throughput | Notes |
 |-------|--------|------|------|-----------|-------|
@@ -530,7 +527,7 @@ vllm-windows-build/
 | Qwen2.5-1.5B-Instruct | GGUF Q8 | 0.6 | 64 | 202.8 tok/s | Baseline GGUF test |
 | nomic-embed-text-v1.5 | FP16 safetensors | 0.92 | — | Embedding server | RTX 3060, `--task embed` |
 
-10 models tested across 1B-8B range. Full benchmark results at [AI Character Engine](https://github.com/rookiemann/ai-player-engine).
+Full benchmark results at [AI Character Engine](https://github.com/rookiemann/ai-player-engine).
 
 ---
 
@@ -542,6 +539,7 @@ vllm-windows-build/
 | [PyTorch](https://github.com/pytorch/pytorch) | Deep learning framework | BSD-3 |
 | [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA GPU computing | NVIDIA EULA |
 | [Flash Attention](https://github.com/Dao-AILab/flash-attention) | Fast attention implementation | BSD-3 |
+| [triton-windows](https://github.com/triton-lang/triton-windows) | Triton compiler for Windows | MIT |
 
 Built with [Claude Opus 4.6](https://claude.ai) as pair-programming partner.
 
