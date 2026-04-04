@@ -6,8 +6,9 @@
 ![CUDA: 12.6](https://img.shields.io/badge/CUDA-12.6-76B900)
 ![Python: 3.10](https://img.shields.io/badge/Python-3.10-3776AB)
 ![Triton: 3.6](https://img.shields.io/badge/Triton-3.6-red)
+![TurboQuant: KV Cache](https://img.shields.io/badge/TurboQuant-KV%20Cache%20Compression-purple)
 
-**Native Windows build of vLLM — no WSL, no Docker, no Linux VM.** Now with **Triton support** and **Qwen 3.5** (Gated Delta Networks).
+**Native Windows build of vLLM — no WSL, no Docker, no Linux VM.** Now with **Triton support**, **Qwen 3.5** (Gated Delta Networks), and **TurboQuant KV cache compression** (per-attention-head FP8 quantization).
 
 vLLM is the most popular open-source LLM serving engine, but it officially only supports Linux. This repo provides both a **pre-built wheel** (just download and install) and a complete patchset for compiling vLLM natively on Windows with full CUDA acceleration.
 
@@ -25,6 +26,7 @@ vLLM is the most popular open-source LLM serving engine, but it officially only 
 - **FlashAttention 2 + 4** — FA2 compiled, FA4 CuteDSL support
 - **PyTorch 2.10.0** — latest stable with CUDA 12.6
 - **253 CUDA kernels compiled** — all passing on MSVC 2022
+- **TurboQuant KV cache compression** — per-attention-head FP8 quantization Triton kernels ported to SM 8.6, integrated via compressed-tensors/LLM-Compressor framework
 
 ---
 
@@ -414,6 +416,42 @@ python vllm_launcher.py ^
 
 ---
 
+## TurboQuant — KV Cache Compression
+
+This build includes [TurboQuant](https://arxiv.org/abs/2501.06725)-style per-attention-head FP8 KV cache quantization, which compresses the KV cache to reduce VRAM usage and increase concurrency. The implementation is integrated two ways:
+
+### 1. Triton Kernels (standalone, `turboquant/`)
+
+Three Triton kernels from the TurboQuant paper, ported to SM 8.6 (RTX 3090 / Ampere):
+
+| Kernel | File | Purpose |
+|--------|------|---------|
+| KV Update | `turboquant/triton_turboquant_kv_update.py` | Quantizes K/V to FP8 with per-head scales during cache insertion |
+| Decode Attention | `turboquant/triton_turboquant_decode.py` | FP8 paged attention with per-head dequantization during decode |
+| Modified Attention | `turboquant/triton_attn_modified.py` | Full attention with integrated FP8 KV quantization/dequantization |
+
+Supporting files: `turboquant_kv_cache.py` (cache manager), `turboquant_metadata.py` (scale storage), `generate_turboquant_metadata.py` (calibration).
+
+### 2. vLLM Integration (compressed-tensors framework)
+
+Inside `vllm-source/`, the KV cache compression concepts are integrated through vLLM's compressed-tensors / LLM-Compressor framework:
+
+- **`CompressedTensorsKVCacheMethod`** — per-attention-head FP8 quantization with TP-aware scale loading
+- **Triton reshape-and-cache kernels** — FP8 quantization during KV cache insertion
+- **Automatic detection** — `kv_cache_scheme` in model configs enables per-head quant scales
+
+To use with a calibrated model checkpoint (LLM-Compressor format):
+
+```python
+llm = LLM(
+    model='path/to/calibrated-model',
+    kv_cache_dtype='fp8',
+    enforce_eager=True,
+)
+```
+
+---
+
 ## Known Limitations
 
 - **Single GPU only** — no NCCL on Windows means no multi-GPU tensor parallelism. `world_size` must be 1.
@@ -501,6 +539,13 @@ vllm-windows-build/
 │   └── ...
 ├── venv/                 # Python virtual environment
 │   └── Scripts/python.exe
+├── turboquant/           # TurboQuant Triton kernels (SM 8.6)
+│   ├── triton_turboquant_kv_update.py
+│   ├── triton_turboquant_decode.py
+│   ├── triton_attn_modified.py
+│   ├── turboquant_kv_cache.py
+│   ├── turboquant_metadata.py
+│   └── generate_turboquant_metadata.py
 ├── vllm-windows.patch
 ├── vllm_launcher.py      # <-- run this to start the server
 ├── build.bat

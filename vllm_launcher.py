@@ -34,6 +34,7 @@ if sys.platform == "win32":
     sys.modules["uvloop"] = uvloop
 
 from vllm import LLM, SamplingParams
+from vllm.sampling_params import StructuredOutputsParams
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("vllm_launcher")
@@ -284,6 +285,7 @@ def create_app(llm: LLM, model_name: str, task: str = "generate"):
         frequency_penalty = body.get("frequency_penalty", 0.0)
         tools = body.get("tools")
         tool_choice = body.get("tool_choice", "auto")
+        response_format = body.get("response_format")
 
         # Build prompt from messages using tokenizer's chat template
         tokenizer = llm.get_tokenizer()
@@ -353,6 +355,12 @@ def create_app(llm: LLM, model_name: str, task: str = "generate"):
                     parts.append(f"{role}: {content}")
                 parts.append("assistant:")
                 prompt = "\n".join(parts)
+
+        # Note: structured_outputs (response_format) is not supported on Windows
+        # V1 engine with InprocClient — causes "sample_tokens()" state error.
+        # The caller should handle JSON parsing/repair on its own.
+        if response_format:
+            logger.debug("response_format requested but not supported on Windows V1 engine; ignoring")
 
         params = SamplingParams(
             max_tokens=max_tokens,
@@ -736,6 +744,8 @@ def main():
                         help="Task type: 'generate' for text generation, 'embed' for embeddings")
     parser.add_argument("--trust-remote-code", action="store_true",
                         help="Allow custom model code (needed for some embedding models like nomic-bert)")
+    parser.add_argument("--cpu-offload-gb", type=float, default=0,
+                        help="GiB of model weights to offload to CPU (useful for Windows WDDM memory limits)")
     args = parser.parse_args()
 
     # Interactive model selection if --model not provided
@@ -769,6 +779,8 @@ def main():
         llm_kwargs["max_num_batched_tokens"] = args.max_num_batched_tokens
     if args.trust_remote_code:
         llm_kwargs["trust_remote_code"] = True
+    if args.cpu_offload_gb > 0:
+        llm_kwargs["cpu_offload_gb"] = args.cpu_offload_gb
 
     llm = LLM(**llm_kwargs)
     elapsed = time.time() - start
