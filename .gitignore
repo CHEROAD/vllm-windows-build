@@ -6,3 +6,5 @@ python/
 dist/
 *.whl
 .vllm_config.json
+.venv
+.vscode/

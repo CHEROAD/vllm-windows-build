@@ -128,9 +128,9 @@ BF16 Qwen3.5-4B uses 8.61 GiB for weights alone — no room for KV cache on 12 G
 
 ## Environment
 
-- vLLM: 0.17.1+cu126
-- PyTorch: 2.10.0+cu126
+- vLLM: 0.17.1+cu128
+- PyTorch: 2.10.0+cu128
 - Triton: 3.6.0 (triton-windows)
-- Python: 3.10
-- CUDA: 12.6
-- OS: Windows 10
+- Python: 3.12.13
+- CUDA: 12.8
+- OS: Windows 11

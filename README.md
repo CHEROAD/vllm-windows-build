@@ -148,7 +148,7 @@ Open a **Visual Studio Developer Command Prompt** (or run `vcvars64.bat`), then:
 ```batch
 venv\Scripts\activate
 
-set CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6
+set CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8
 set TORCH_CUDA_ARCH_LIST=8.6
 set VLLM_TARGET_DEVICE=cuda
 set MAX_JOBS=8
